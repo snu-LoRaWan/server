@@ -70,7 +70,9 @@
         % packet_forwarder's push_timeout_ms + transport + deduplication_delay
         {preprocessing_delay, 300},
         {deduplication_delay, 150},
-        {event_lifetime, 86400}
+        {event_lifetime, 86400},
+        {beacon_freq, 920.9},
+        {beacon_interval, 100}
     ]},
     {applications, [kernel, stdlib, sasl, os_mon, mnesia, lager, syn, worker_pool,
         cowboy, gun, jsx, iso8601, emqttc, lorawan_server_api]}]}.
