@@ -4,12 +4,15 @@ erl_crash.dump
 .idea/
 *.iml
 
+*.swp
+
 rebar3
 _build
 rebar.lock
 
 scripts/dpkg-deb/control
 node_modules/
+package-lock.json
 priv/admin/jquery.min.js
 priv/admin/angular-google-maps.min.js
 priv/admin/angular-simple-logger.min.js
