@@ -16,7 +16,8 @@
 -record(state, {pulladdr, recent}).
 
 start_link() ->
-    gen_server:start_link({global, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({global, ?MODULE}, ?MODULE, [], []),
+    timer:send_after(application:get_env(lorawan_server, beacon_interval), beacon).
 
 register(MAC, Process, Target) ->
     gen_server:cast({global, ?MODULE}, {register, MAC, Process, Target}).
@@ -143,7 +144,20 @@ handle_info({process, PHYPayload}, #state{recent=Recent}=State) ->
     % lager:debug("--> datr ~s, codr ~s, tmst ~B, size ~B", [RxQ#rxq.datr, RxQ#rxq.codr, RxQ#rxq.tmst, byte_size(PHYPayload)]),
     wpool:cast(handler_pool, {Req, MAC, RxQ, PHYPayload}, available_worker),
     Recent2 = dict:erase(PHYPayload, Recent),
-    {noreply, State#state{recent=Recent2}}.
+    {noreply, State#state{recent=Recent2}};
+
+handle_info({beacon, _}, State) ->
+    % at first, read MAC address from table
+    case mnesia:all_keys(gateways) of
+        [MAC|_] ->
+            PHYPayload = <<2#110:3, 0:5, 0:4/binary>>,
+            Req = #request{},
+            DevAddr = 0,
+            TxQ = #txq{datr="SF12BW125", codr="4/5", region="KR920-923", freq=920.9},
+            downlink(Req, MAC, DevAddr, TxQ, PHYPayload)
+    end,
+    timer:send_after(application:get_env(lorawan_server, beacon_interval), beacon),
+    {noreply, State}.
 
 terminate(Reason, _State) ->
     % record graceful shutdown in the log
