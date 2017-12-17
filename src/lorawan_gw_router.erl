@@ -16,8 +16,7 @@
 -record(state, {pulladdr, recent}).
 
 start_link() ->
-    gen_server:start_link({global, ?MODULE}, ?MODULE, [], []),
-    timer:send_after(application:get_env(lorawan_server, beacon_interval), beacon).
+    gen_server:start_link({global, ?MODULE}, ?MODULE, [], []).
 
 register(MAC, Process, Target) ->
     gen_server:cast({global, ?MODULE}, {register, MAC, Process, Target}).
@@ -80,6 +79,8 @@ value_or_default(Num, _Def) when is_number(Num) -> Num;
 value_or_default(_Num, Def) -> Def.
 
 init([]) ->
+    {ok, BInterval} = application:get_env(lorawan_server, beacon_interval),
+    timer:send_after(BInterval, beacon),
     {ok, #state{pulladdr=dict:new(), recent=dict:new()}}.
 
 handle_call(_Request, _From, State) ->
@@ -146,7 +147,7 @@ handle_info({process, PHYPayload}, #state{recent=Recent}=State) ->
     Recent2 = dict:erase(PHYPayload, Recent),
     {noreply, State#state{recent=Recent2}};
 
-handle_info({beacon, _}, State) ->
+handle_info(beacon, State) ->
     % at first, read MAC address from table
     case mnesia:all_keys(gateways) of
         [MAC|_] ->
@@ -156,7 +157,8 @@ handle_info({beacon, _}, State) ->
             TxQ = #txq{datr="SF12BW125", codr="4/5", region="KR920-923", freq=920.9},
             downlink(Req, MAC, DevAddr, TxQ, PHYPayload)
     end,
-    timer:send_after(application:get_env(lorawan_server, beacon_interval), beacon),
+    {ok, BInterval} = application:get_env(lorawan_server, beacon_interval),
+    timer:send_after(BInterval, beacon),
     {noreply, State}.
 
 terminate(Reason, _State) ->
