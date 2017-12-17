@@ -72,7 +72,7 @@
         {deduplication_delay, 150},
         {event_lifetime, 86400},
         {beacon_freq, 920.9},
-        {beacon_interval, 100}
+        {beacon_interval, 1000}
     ]},
     {applications, [kernel, stdlib, sasl, os_mon, mnesia, lager, syn, worker_pool,
         cowboy, gun, jsx, iso8601, emqttc, lorawan_server_api]}]}.
