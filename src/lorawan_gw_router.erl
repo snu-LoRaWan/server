@@ -134,6 +134,12 @@ handle_cast({downlink_error, _MAC, DevAddr, Error}, State) ->
     lorawan_utils:throw_error({node, DevAddr}, Error),
     {noreply, State}.
 
+get_oldest_frid() ->
+    case mnesia:dirty_all_keys(txframes) of
+        [] -> undefined;
+        [H|T] -> lists:min([H|T]);
+        _Else -> undefined
+    end.
 
 handle_info({process, PHYPayload}, #state{recent=Recent}=State) ->
     % find the best (for now)
@@ -151,15 +157,31 @@ handle_info(beacon, State) ->
     % at first, read MAC address from table
     case mnesia:dirty_all_keys(gateways) of
         [MAC] ->
-            PHYPayload = <<2#110:3, 0:5, 0:32>>,
+            Frid = get_oldest_frid(),
+            PHYPayload = <<2#110:3, 0:5, (case Frid of
+                                              undefind -> 0;
+                                              TargetAddr -> TargetAddr
+                                          end):32>>,
             Req = #request{},
             DevAddr = 0,
             TxQ = #txq{datr = <<"SF12BW125">>, codr = <<"4/5">>, region = <<"KR920-923">>, freq = 920.9, time = immediately},
+            {ok, BTInterval} = application:get_env(lorawan_server, beacon_transmit_interval),
+            case Frid of
+                undefined -> ok;
+                Trid -> timer:send_after(BTInterval, {beacon_transmit, Trid})
+            end,
             downlink(Req, MAC, DevAddr, TxQ, PHYPayload)
     end,
     {ok, BInterval} = application:get_env(lorawan_server, beacon_interval),
     timer:send_after(BInterval, beacon),
-    {noreply, State}.
+    {noreply, State};
+
+handle_info({beacon_transmit, Trid}, State) ->
+    [TxFrame|_] = mnesia:read(txframes, Trid),
+    mnesia:dirty_delete(txframes, Trid),
+    [Link|_] = mnesia:dirty_read(links, TxFrame#txframe.devaddr),
+    lorawan_handler:downlink(Link, immediately, TxFrame#txframe.txdata),
+    {ok, State}.
 
 terminate(Reason, _State) ->
     % record graceful shutdown in the log
