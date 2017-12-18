@@ -159,7 +159,7 @@ handle_info(beacon, State) ->
         [MAC] ->
             Frid = get_oldest_frid(),
             PHYPayload = <<2#110:3, 0:5, (case Frid of
-                                              undefind -> 0;
+                                              undefined -> 0;
                                               TargetAddr -> TargetAddr
                                           end):32>>,
             Req = #request{},
