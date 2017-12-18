@@ -149,12 +149,12 @@ handle_info({process, PHYPayload}, #state{recent=Recent}=State) ->
 
 handle_info(beacon, State) ->
     % at first, read MAC address from table
-    case mnesia:all_keys(gateways) of
+    case mnesia:dirty_all_keys(gateways) of
         [MAC] ->
-            PHYPayload = <<2#110:3, 0:5, 0:4/binary>>,
+            PHYPayload = <<2#110:3, 0:5, 0:32>>,
             Req = #request{},
             DevAddr = 0,
-            TxQ = #txq{datr = <<"SF12BW125">>, codr = <<"4/5">>, region = <<"KR920-923">>, freq=920.9},
+            TxQ = #txq{datr = <<"SF12BW125">>, codr = <<"4/5">>, region = <<"KR920-923">>, freq = 920.9, time = immediately},
             downlink(Req, MAC, DevAddr, TxQ, PHYPayload)
     end,
     {ok, BInterval} = application:get_env(lorawan_server, beacon_interval),
