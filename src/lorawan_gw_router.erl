@@ -164,7 +164,7 @@ handle_info(beacon, State) ->
                                           end):32>>,
             Req = #request{},
             DevAddr = 0,
-            {ok, BeaconFreq} = application:get_env(lorawan_sever, beacon_freq),
+            {ok, BeaconFreq} = application:get_env(lorawan_server, beacon_freq),
             TxQ = #txq{datr = <<"SF12BW125">>, codr = <<"4/5">>, region = <<"KR920-923">>, freq = BeaconFreq, time = immediately},
             {ok, BTInterval} = application:get_env(lorawan_server, beacon_transmit_interval),
             case Frid of
