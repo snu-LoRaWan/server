@@ -154,6 +154,11 @@ handle_info({process, PHYPayload}, #state{recent=Recent}=State) ->
     {noreply, State#state{recent=Recent2}};
 
 handle_info(beacon, State) ->
+    % TEST PACKET
+    case mnesia:dirty_all_keys(links) of
+        [] -> ok;
+        [Link|_] -> lorawan_handler:store_frame(Link#link.devaddr, #txdata{data = <<"TEST!!!!">>})
+    end,
     % at first, read MAC address from table
     case mnesia:dirty_all_keys(gateways) of
         [MAC] ->
