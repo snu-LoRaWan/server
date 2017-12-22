@@ -186,10 +186,14 @@ handle_info(beacon, State) ->
 
 handle_info({beacon_transmit, Trid}, State) ->
     [TxFrame|_] = mnesia:dirty_read(txframes, Trid),
-    mnesia:dirty_delete(txframes, Trid),
-    [Link|_] = mnesia:dirty_read(links, TxFrame#txframe.devaddr),
-    lorawan_handler:downlink(Link, immediately, TxFrame#txframe.txdata),
-    {noreply, State}.
+    case mnesia:dirty_read(links, TxFrame#txframe.devaddr) of
+        [] -> {noreply, State};
+        [Link|_] ->
+            mnesia:dirty_read(links, TxFrame#txframe.devaddr),
+            mnesia:dirty_delete(txframes, Trid),
+            lorawan_handler:downlink(Link, immediately, TxFrame#txframe.txdata),
+            {noreply, State}
+    end.
 
 terminate(Reason, _State) ->
     % record graceful shutdown in the log
