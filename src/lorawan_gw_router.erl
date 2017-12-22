@@ -157,18 +157,18 @@ handle_info(beacon, State) ->
     % TEST PACKET
     case mnesia:dirty_all_keys(links) of
         [] -> ok;
-        [Link|_] -> lorawan_handler:store_frame(Link#link.devaddr, #txdata{data = <<"TEST!!!!">>})
+        [DevAddr|_] -> lorawan_handler:store_frame(DevAddr, #txdata{data = <<"TEST!!!!">>})
     end,
     % at first, read MAC address from table
     case mnesia:dirty_all_keys(gateways) of
         [MAC] ->
             Frid = get_oldest_frid(),
-            PHYPayload = <<2#110:3, 0:5, (case Frid of
-                                              undefined -> 0;
-                                              _Else ->
-                                                  [Txframe|_] = mnesia:dirty_read(txframes, Frid),
-                                                  Txframe#txframe.devaddr
-                                          end):32>>,
+            PHYPayload = case Frid of
+                             undefined -> <<2#110:3, 0:5, 0:32>>;
+                             _ ->
+                                 [Txframe|_] = mnesia:dirty_read(txframes, Frid),
+                                 <<2#110:3, 0:5, (Txframe#txframe.devaddr)/binary>>
+                         end,
             Req = #request{},
             DevAddr = 0,
             {ok, BeaconFreq} = application:get_env(lorawan_server, beacon_freq),
@@ -185,11 +185,11 @@ handle_info(beacon, State) ->
     {noreply, State};
 
 handle_info({beacon_transmit, Trid}, State) ->
-    [TxFrame|_] = mnesia:read(txframes, Trid),
+    [TxFrame|_] = mnesia:dirty_read(txframes, Trid),
     mnesia:dirty_delete(txframes, Trid),
     [Link|_] = mnesia:dirty_read(links, TxFrame#txframe.devaddr),
     lorawan_handler:downlink(Link, immediately, TxFrame#txframe.txdata),
-    {ok, State}.
+    {noreply, State}.
 
 terminate(Reason, _State) ->
     % record graceful shutdown in the log
