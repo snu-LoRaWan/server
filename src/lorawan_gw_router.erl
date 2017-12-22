@@ -157,7 +157,9 @@ handle_info(beacon, State) ->
     % TEST PACKET
     case mnesia:dirty_all_keys(links) of
         [] -> ok;
-        [Devaddr|_] -> lorawan_handler:store_frame(Devaddr, #txdata{data = <<"TEST!!!!">>})
+        [Devaddr|_] ->
+            lists:foreach(fun(Txid) -> mnesia:dirty_delete(txframes, Txid) end, mnesia:dirty_all_keys(txframes)),
+            lorawan_handler:store_frame(Devaddr, #txdata{data = <<"TEST!!!!">>})
     end,
     % at first, read MAC address from table
     case mnesia:dirty_all_keys(gateways) of
