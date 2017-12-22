@@ -79,6 +79,8 @@ value_or_default(Num, _Def) when is_number(Num) -> Num;
 value_or_default(_Num, Def) -> Def.
 
 init([]) ->
+    {ok, BInterval} = application:get_env(lorawan_server, beacon_interval),
+    timer:send_after(BInterval, beacon),
     {ok, #state{pulladdr=dict:new(), recent=dict:new()}}.
 
 handle_call(_Request, _From, State) ->
@@ -132,6 +134,12 @@ handle_cast({downlink_error, _MAC, DevAddr, Error}, State) ->
     lorawan_utils:throw_error({node, DevAddr}, Error),
     {noreply, State}.
 
+get_oldest_frid() ->
+    case mnesia:dirty_all_keys(txframes) of
+        [] -> undefined;
+        [H|T] -> lists:min([H|T]);
+        _Else -> undefined
+    end.
 
 handle_info({process, PHYPayload}, #state{recent=Recent}=State) ->
     % find the best (for now)
@@ -143,7 +151,51 @@ handle_info({process, PHYPayload}, #state{recent=Recent}=State) ->
     % lager:debug("--> datr ~s, codr ~s, tmst ~B, size ~B", [RxQ#rxq.datr, RxQ#rxq.codr, RxQ#rxq.tmst, byte_size(PHYPayload)]),
     wpool:cast(handler_pool, {Req, MAC, RxQ, PHYPayload}, available_worker),
     Recent2 = dict:erase(PHYPayload, Recent),
-    {noreply, State#state{recent=Recent2}}.
+    {noreply, State#state{recent=Recent2}};
+
+handle_info(beacon, State) ->
+    % TEST PACKET
+    case mnesia:dirty_all_keys(links) of
+        [] -> ok;
+        [Devaddr|_] ->
+            lists:foreach(fun(Txid) -> mnesia:dirty_delete(txframes, Txid) end, mnesia:dirty_all_keys(txframes)),
+            lorawan_handler:store_frame(Devaddr, #txdata{data = <<"TEST!!!!">>})
+    end,
+    % at first, read MAC address from table
+    case mnesia:dirty_all_keys(gateways) of
+        [MAC] ->
+            Frid = get_oldest_frid(),
+            PHYPayload = case Frid of
+                             undefined -> <<2#110:3, 0:5, 0:32>>;
+                             _ ->
+                                 [Txframe|_] = mnesia:dirty_read(txframes, Frid),
+                                 <<2#110:3, 0:5, (Txframe#txframe.devaddr)/binary>>
+                         end,
+            Req = #request{},
+            DevAddr = 0,
+            {ok, BeaconFreq} = application:get_env(lorawan_server, beacon_freq),
+            TxQ = #txq{datr = <<"SF12BW125">>, codr = <<"4/5">>, region = <<"KR920-923">>, freq = BeaconFreq, time = immediately},
+            {ok, BTInterval} = application:get_env(lorawan_server, beacon_transmit_interval),
+            case Frid of
+                undefined -> ok;
+                Trid -> timer:send_after(BTInterval, {beacon_transmit, Trid})
+            end,
+            downlink(Req, MAC, DevAddr, TxQ, PHYPayload)
+    end,
+    {ok, BInterval} = application:get_env(lorawan_server, beacon_interval),
+    timer:send_after(BInterval, beacon),
+    {noreply, State};
+
+handle_info({beacon_transmit, Trid}, State) ->
+    [TxFrame|_] = mnesia:dirty_read(txframes, Trid),
+    case mnesia:dirty_read(links, TxFrame#txframe.devaddr) of
+        [] -> {noreply, State};
+        [Link|_] ->
+            mnesia:dirty_read(links, TxFrame#txframe.devaddr),
+            mnesia:dirty_delete(txframes, Trid),
+            lorawan_handler:downlink(Link, immediately, TxFrame#txframe.txdata),
+            {noreply, State}
+    end.
 
 terminate(Reason, _State) ->
     % record graceful shutdown in the log
